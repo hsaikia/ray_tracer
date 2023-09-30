@@ -8,9 +8,9 @@ use std::io::Error;
 use std::io::LineWriter;
 use std::io::Write;
 
-const NUM_SAMPLE_RAYS: i32 = 32;
-const HEIGHT_PIXELS: i32 = 512;
-const WIDTH_PIXELS: i32 = 512;
+const NUM_SAMPLE_RAYS: u64 = 32;
+const HEIGHT_PIXELS: u64 = 512;
+const WIDTH_PIXELS: u64 = 512;
 const HEIGHT: f64 = 20.0;
 const WIDTH: f64 = 20.0;
 const PIXEL_WIDTH: f64 = WIDTH / WIDTH_PIXELS as f64;
@@ -47,7 +47,6 @@ fn intersection(
 
     for rend in scene {
         if let Some(x) = rend.intersect(ray) {
-            // get random reflected ray
             let reflected_ray = rend.get_reflected_ray(&x, &ray.direction, rng);
             let incident_color = intersection(&reflected_ray, scene, rng, depth + 1);
             return rend.reflectance_color(&incident_color);
@@ -57,11 +56,11 @@ fn intersection(
     BACKGROUND_COLOR
 }
 
-fn random_ray(x: i32, y: i32, camera_z: f64, rng: &mut ThreadRng) -> Ray {
+fn random_ray(x: u64, y: u64, camera_z: f64, rng: &mut ThreadRng) -> Ray {
     let dx = rng.gen_range(-PIXEL_WIDTH / 2.0..PIXEL_WIDTH / 2.0);
     let dy = rng.gen_range(-PIXEL_HEIGHT / 2.0..PIXEL_HEIGHT / 2.0);
-    let x = (((x - WIDTH_PIXELS / 2) as f64) / WIDTH_PIXELS as f64) * WIDTH + dx;
-    let y = (((y - HEIGHT_PIXELS / 2) as f64) / HEIGHT_PIXELS as f64) * HEIGHT + dy;
+    let x = (((x as i64 - WIDTH_PIXELS as i64 / 2) as f64) / WIDTH_PIXELS as f64) * WIDTH + dx;
+    let y = (((y as i64 - HEIGHT_PIXELS as i64 / 2) as f64) / HEIGHT_PIXELS as f64) * HEIGHT + dy;
 
     let mut direction: DVec3 = DVec3 { x, y, z: -camera_z };
     direction = direction.normalize();
@@ -92,7 +91,6 @@ fn main() -> Result<(), Error> {
     let file = File::create(path)?;
     let mut file = LineWriter::new(file);
 
-    let bar = ProgressBar::new(WIDTH_PIXELS as u64 * HEIGHT_PIXELS as u64 * NUM_SAMPLE_RAYS as u64);
     let header = format!("P3\n{WIDTH_PIXELS} {HEIGHT_PIXELS}\n{COLORS}\n");
     file.write_all(header.as_bytes())?;
 
@@ -173,6 +171,7 @@ fn main() -> Result<(), Error> {
         )),
     ];
 
+    let bar = ProgressBar::new(WIDTH_PIXELS * HEIGHT_PIXELS * NUM_SAMPLE_RAYS);
     // Draw
     let mut rng = rand::thread_rng();
     for y in 0..HEIGHT_PIXELS {
