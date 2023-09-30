@@ -19,99 +19,23 @@ const COLORS: usize = 255;
 const CAMERA_Z: f64 = 5.0;
 const MAX_DEPTH: i32 = 4;
 const REFLECTED_RADIANCE_FRACTION: f64 = 0.5;
+const _EPS: f64 = 0.001;
 
 type Color = DVec3;
+
+mod material;
+mod ray;
+mod renderables;
+
+use material::Lambertian;
+use ray::Ray;
+use renderables::{Renderable, Sphere};
 
 const BACKGROUND_COLOR: DVec3 = DVec3 {
     x: 0.8,
     y: 1.0,
     z: 1.0,
 };
-
-struct Ray {
-    origin: DVec3,
-    direction: DVec3,
-}
-
-impl Ray {
-    fn eval(&self, t: f64) -> DVec3 {
-        self.origin + t * self.direction
-    }
-}
-
-struct Sphere {
-    center: DVec3,
-    radius: f64,
-    ambient_color: Color,
-}
-
-impl Sphere {
-    fn new(center: DVec3, radius: f64, ambient_color: Color) -> Self {
-        Sphere {
-            center,
-            radius,
-            ambient_color,
-        }
-    }
-}
-
-trait Renderable {
-    fn intersect(&self, ray: &Ray) -> Option<DVec3>;
-    fn ambient_color(&self) -> DVec3;
-    fn normal(&self, point: &DVec3) -> DVec3;
-    fn get_reflected_ray(&self, pt: &DVec3, rng: &mut ThreadRng) -> Ray;
-}
-
-impl Renderable for Sphere {
-    fn intersect(&self, ray: &Ray) -> Option<DVec3> {
-        let y = ray.origin - self.center;
-        let b = 2.0 * ray.direction.dot(y);
-        let c = y.length_squared() - self.radius * self.radius;
-
-        let det = b * b - 4.0 * c;
-        if det < 0.0 {
-            return None;
-        }
-
-        let det_root = det.sqrt();
-
-        let t1 = (-b - det_root) / 2.0;
-        let t2 = (-b + det_root) / 2.0;
-
-        if t2 < 0.0 {
-            return None;
-        }
-
-        if t1 < 0.0 {
-            return Some(ray.eval(t2));
-        }
-
-        Some(ray.eval(t1))
-    }
-
-    fn ambient_color(&self) -> DVec3 {
-        self.ambient_color
-    }
-    fn normal(&self, point: &DVec3) -> DVec3 {
-        (*point - self.center).normalize()
-    }
-
-    fn get_reflected_ray(&self, pt: &DVec3, rng: &mut ThreadRng) -> Ray {
-        let mut dir = DVec3 {
-            x: rng.gen_range(-1.0..1.0),
-            y: rng.gen_range(-1.0..1.0),
-            z: rng.gen_range(-1.0..1.0),
-        };
-        dir = dir.normalize();
-        if dir.dot(self.normal(pt)) < 0.0 {
-            dir = -dir;
-        }
-        Ray {
-            origin: *pt,
-            direction: dir,
-        }
-    }
-}
 
 fn intersection(
     ray: &Ray,
@@ -175,6 +99,23 @@ fn main() -> Result<(), Error> {
     let header = format!("P3\n{WIDTH_PIXELS} {HEIGHT_PIXELS}\n{COLORS}\n");
     file.write_all(header.as_bytes())?;
 
+    // Setup materials
+    let blue_material = Box::new(Lambertian {
+        ambient_color: DVec3 {
+            x: 0.0,
+            y: 0.5,
+            z: 1.0,
+        },
+    });
+
+    let green_material = Box::new(Lambertian {
+        ambient_color: DVec3 {
+            x: 0.1,
+            y: 0.7,
+            z: 0.1,
+        },
+    });
+
     // Setup scene
     let scene: Vec<Box<dyn Renderable>> = vec![
         // Sphere
@@ -185,11 +126,7 @@ fn main() -> Result<(), Error> {
                 z: -8.0,
             },
             8.0,
-            DVec3 {
-                x: 0.0,
-                y: 0.5,
-                z: 1.0,
-            },
+            blue_material,
         )),
         // Earth
         Box::new(Sphere::new(
@@ -199,11 +136,7 @@ fn main() -> Result<(), Error> {
                 z: -8.0,
             },
             992.0,
-            DVec3 {
-                x: 0.1,
-                y: 0.7,
-                z: 0.1,
-            },
+            green_material,
         )),
     ];
 

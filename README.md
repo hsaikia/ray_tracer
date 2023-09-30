@@ -7,3 +7,7 @@ A simple ray tracer writtin in Rust.
 ### 100% diffuse reflectance. 32x anti-aliasing.
 
 ![image](results/diffuse.png)
+
+### Lambertian reflection
+
+![image](results/lambertian_reflection.png)
