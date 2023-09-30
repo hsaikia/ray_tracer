@@ -16,10 +16,8 @@ const WIDTH: f64 = 20.0;
 const PIXEL_WIDTH: f64 = WIDTH / WIDTH_PIXELS as f64;
 const PIXEL_HEIGHT: f64 = HEIGHT / HEIGHT_PIXELS as f64;
 const COLORS: usize = 255;
-const CAMERA_Z: f64 = 5.0;
-const MAX_DEPTH: i32 = 4;
-const REFLECTED_RADIANCE_FRACTION: f64 = 0.5;
-const _EPS: f64 = 0.001;
+const CAMERA_Z: f64 = 8.0;
+const MAX_DEPTH: i32 = 10;
 
 type Color = DVec3;
 
@@ -27,7 +25,7 @@ mod material;
 mod ray;
 mod renderables;
 
-use material::Lambertian;
+use material::{Lambertian, Metal};
 use ray::Ray;
 use renderables::{Renderable, Sphere};
 
@@ -50,10 +48,9 @@ fn intersection(
     for rend in scene {
         if let Some(x) = rend.intersect(ray) {
             // get random reflected ray
-            let reflected_ray = rend.get_reflected_ray(&x, rng);
-            return rend.ambient_color() * (1.0 - REFLECTED_RADIANCE_FRACTION)
-                + REFLECTED_RADIANCE_FRACTION
-                    * intersection(&reflected_ray, scene, rng, depth + 1);
+            let reflected_ray = rend.get_reflected_ray(&x, &ray.direction, rng);
+            let incident_color = intersection(&reflected_ray, scene, rng, depth + 1);
+            return rend.reflectance_color(&incident_color);
         }
     }
 
@@ -106,6 +103,23 @@ fn main() -> Result<(), Error> {
             y: 0.5,
             z: 1.0,
         },
+        reflectance_factor: 0.5,
+    });
+
+    let silver_material = Box::new(Metal {
+        ambient_color: DVec3 {
+            x: 0.8,
+            y: 0.8,
+            z: 0.8,
+        },
+    });
+
+    let orange_material = Box::new(Metal {
+        ambient_color: DVec3 {
+            x: 0.9,
+            y: 0.5,
+            z: 0.1,
+        },
     });
 
     let green_material = Box::new(Lambertian {
@@ -114,11 +128,12 @@ fn main() -> Result<(), Error> {
             y: 0.7,
             z: 0.1,
         },
+        reflectance_factor: 0.5,
     });
 
     // Setup scene
     let scene: Vec<Box<dyn Renderable>> = vec![
-        // Sphere
+        // Spheres
         Box::new(Sphere::new(
             DVec3 {
                 x: 0.0,
@@ -127,6 +142,24 @@ fn main() -> Result<(), Error> {
             },
             8.0,
             blue_material,
+        )),
+        Box::new(Sphere::new(
+            DVec3 {
+                x: 16.0,
+                y: 0.0,
+                z: -8.0,
+            },
+            8.0,
+            silver_material,
+        )),
+        Box::new(Sphere::new(
+            DVec3 {
+                x: -16.0,
+                y: 0.0,
+                z: -8.0,
+            },
+            8.0,
+            orange_material,
         )),
         // Earth
         Box::new(Sphere::new(

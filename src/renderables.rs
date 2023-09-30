@@ -3,6 +3,9 @@ use crate::Ray;
 use glam::f64::DVec3;
 use rand::rngs::ThreadRng;
 
+const EPS: f64 = 0.001;
+
+type Color = DVec3;
 pub struct Sphere {
     center: DVec3,
     radius: f64,
@@ -21,9 +24,9 @@ impl Sphere {
 
 pub trait Renderable {
     fn intersect(&self, ray: &Ray) -> Option<DVec3>;
-    fn ambient_color(&self) -> DVec3;
+    fn reflectance_color(&self, incident_color: &Color) -> DVec3;
     fn normal(&self, point: &DVec3) -> DVec3;
-    fn get_reflected_ray(&self, pt: &DVec3, rng: &mut ThreadRng) -> Ray;
+    fn get_reflected_ray(&self, pt: &DVec3, incident_dir: &DVec3, rng: &mut ThreadRng) -> Ray;
 }
 
 impl Renderable for Sphere {
@@ -42,25 +45,26 @@ impl Renderable for Sphere {
         let t1 = (-b - det_root) / 2.0;
         let t2 = (-b + det_root) / 2.0;
 
-        if t2 < 0.0 {
+        if t2 < EPS {
             return None;
         }
 
-        if t1 < 0.0 {
+        if t1 < EPS {
             return Some(ray.eval(t2));
         }
 
         Some(ray.eval(t1))
     }
 
-    fn ambient_color(&self) -> DVec3 {
-        self.material.ambient_color()
+    fn reflectance_color(&self, incident_color: &Color) -> DVec3 {
+        self.material.reflectance(incident_color)
     }
     fn normal(&self, point: &DVec3) -> DVec3 {
         (*point - self.center).normalize()
     }
 
-    fn get_reflected_ray(&self, pt: &DVec3, rng: &mut ThreadRng) -> Ray {
-        self.material.get_reflected_ray(pt, &self.normal(pt), rng)
+    fn get_reflected_ray(&self, pt: &DVec3, incident_dir: &DVec3, rng: &mut ThreadRng) -> Ray {
+        self.material
+            .get_reflected_ray(pt, incident_dir, &self.normal(pt), rng)
     }
 }
