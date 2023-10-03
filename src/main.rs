@@ -1,21 +1,18 @@
 use glam::f64::DVec3;
-use glam::UVec3;
 use indicatif::ProgressBar;
 use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::fs::File;
-use std::io::Error;
-use std::io::LineWriter;
-use std::io::Write;
+use std::io::BufWriter;
 
-const NUM_SAMPLE_RAYS: u64 = 32;
-const HEIGHT_PIXELS: u64 = 512;
-const WIDTH_PIXELS: u64 = 512;
+const NUM_SAMPLE_RAYS: usize = 32;
+const HEIGHT_PIXELS: usize = 512;
+const WIDTH_PIXELS: usize = 512;
+const TOTAL_SIZE: usize = WIDTH_PIXELS * HEIGHT_PIXELS * 3;
 const HEIGHT: f64 = 20.0;
 const WIDTH: f64 = 20.0;
 const PIXEL_WIDTH: f64 = WIDTH / WIDTH_PIXELS as f64;
 const PIXEL_HEIGHT: f64 = HEIGHT / HEIGHT_PIXELS as f64;
-const COLORS: usize = 255;
 const CAMERA_Z: f64 = 8.0;
 const MAX_DEPTH: i32 = 10;
 
@@ -25,7 +22,7 @@ mod material;
 mod ray;
 mod renderables;
 
-use material::{Lambertian, Metal};
+use material::{Dielectric, Lambertian, Metal};
 use ray::Ray;
 use renderables::{Renderable, Sphere};
 
@@ -47,8 +44,8 @@ fn intersection(
 
     for rend in scene {
         if let Some(x) = rend.intersect(ray) {
-            let reflected_ray = rend.get_reflected_ray(&x, &ray.direction, rng);
-            let incident_color = intersection(&reflected_ray, scene, rng, depth + 1);
+            let new_ray = rend.get_new_ray(&x, &ray.direction, rng);
+            let incident_color = intersection(&new_ray, scene, rng, depth + 1);
             return rend.reflectance_color(&incident_color);
         }
     }
@@ -56,7 +53,7 @@ fn intersection(
     BACKGROUND_COLOR
 }
 
-fn random_ray(x: u64, y: u64, camera_z: f64, rng: &mut ThreadRng) -> Ray {
+fn random_ray(x: usize, y: usize, camera_z: f64, rng: &mut ThreadRng) -> Ray {
     let dx = rng.gen_range(-PIXEL_WIDTH / 2.0..PIXEL_WIDTH / 2.0);
     let dy = rng.gen_range(-PIXEL_HEIGHT / 2.0..PIXEL_HEIGHT / 2.0);
     let x = (((x as i64 - WIDTH_PIXELS as i64 / 2) as f64) / WIDTH_PIXELS as f64) * WIDTH + dx;
@@ -72,28 +69,7 @@ fn random_ray(x: u64, y: u64, camera_z: f64, rng: &mut ThreadRng) -> Ray {
     Ray { origin, direction }
 }
 
-fn color_to_string(color: &DVec3) -> String {
-    //println!("{:?}", color);
-    assert!(color.x >= 0.0 && color.x <= 1.0);
-    assert!(color.y >= 0.0 && color.y <= 1.0);
-    assert!(color.z >= 0.0 && color.z <= 1.0);
-
-    let col: UVec3 = UVec3 {
-        x: (color.x * 255.0) as u32,
-        y: (color.y * 255.0) as u32,
-        z: (color.z * 255.0) as u32,
-    };
-    format!("{} {} {}\n", col.x, col.y, col.z)
-}
-
-fn main() -> Result<(), Error> {
-    let path = "image.ppm";
-    let file = File::create(path)?;
-    let mut file = LineWriter::new(file);
-
-    let header = format!("P3\n{WIDTH_PIXELS} {HEIGHT_PIXELS}\n{COLORS}\n");
-    file.write_all(header.as_bytes())?;
-
+fn main() {
     // Setup materials
     let blue_material = Box::new(Lambertian {
         ambient_color: DVec3 {
@@ -112,17 +88,18 @@ fn main() -> Result<(), Error> {
         },
     });
 
-    let orange_material = Box::new(Metal {
+    let glass_material = Box::new(Dielectric {
         ambient_color: DVec3 {
-            x: 0.9,
-            y: 0.5,
-            z: 0.1,
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
         },
+        refraction_coeff: 1.5,
     });
 
     let green_material = Box::new(Lambertian {
         ambient_color: DVec3 {
-            x: 0.1,
+            x: 0.2,
             y: 0.7,
             z: 0.1,
         },
@@ -157,7 +134,7 @@ fn main() -> Result<(), Error> {
                 z: -8.0,
             },
             8.0,
-            orange_material,
+            glass_material,
         )),
         // Earth
         Box::new(Sphere::new(
@@ -171,9 +148,24 @@ fn main() -> Result<(), Error> {
         )),
     ];
 
-    let bar = ProgressBar::new(WIDTH_PIXELS * HEIGHT_PIXELS * NUM_SAMPLE_RAYS);
-    // Draw
+    // Progress Bar
+    let bar = ProgressBar::new(WIDTH_PIXELS as u64 * HEIGHT_PIXELS as u64 * NUM_SAMPLE_RAYS as u64);
+
+    // RNG
     let mut rng = rand::thread_rng();
+
+    // Set up image file
+    let path = "image.png";
+    let file = File::create(path).unwrap();
+    let w = &mut BufWriter::new(file);
+
+    let mut encoder = png::Encoder::new(w, WIDTH_PIXELS as u32, HEIGHT_PIXELS as u32);
+    encoder.set_color(png::ColorType::Rgb);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().unwrap();
+
+    let mut data: [u8; TOTAL_SIZE] = [0; TOTAL_SIZE];
+    // Draw
     for y in 0..HEIGHT_PIXELS {
         for x in 0..WIDTH_PIXELS {
             let mut col = DVec3::ZERO;
@@ -183,10 +175,11 @@ fn main() -> Result<(), Error> {
                 bar.inc(1);
             }
             col /= NUM_SAMPLE_RAYS as f64;
-            // Have to be all integers
-            let col_str = color_to_string(&col);
-            file.write_all(col_str.as_bytes())?;
+            let idx = y * WIDTH_PIXELS + x;
+            data[3 * idx] = (col.x * 255.0) as u8;
+            data[3 * idx + 1] = (col.y * 255.0) as u8;
+            data[3 * idx + 2] = (col.z * 255.0) as u8;
         }
     }
-    Ok(())
+    writer.write_image_data(&data).unwrap();
 }

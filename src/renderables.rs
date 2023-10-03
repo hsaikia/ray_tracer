@@ -26,7 +26,7 @@ pub trait Renderable {
     fn intersect(&self, ray: &Ray) -> Option<DVec3>;
     fn reflectance_color(&self, incident_color: &Color) -> DVec3;
     fn normal(&self, point: &DVec3) -> DVec3;
-    fn get_reflected_ray(&self, pt: &DVec3, incident_dir: &DVec3, rng: &mut ThreadRng) -> Ray;
+    fn get_new_ray(&self, pt: &DVec3, incident_dir: &DVec3, rng: &mut ThreadRng) -> Ray;
 }
 
 impl Renderable for Sphere {
@@ -63,8 +63,12 @@ impl Renderable for Sphere {
         (*point - self.center).normalize()
     }
 
-    fn get_reflected_ray(&self, pt: &DVec3, incident_dir: &DVec3, rng: &mut ThreadRng) -> Ray {
-        self.material
-            .get_reflected_ray(pt, incident_dir, &self.normal(pt), rng)
+    fn get_new_ray(&self, pt: &DVec3, incident_dir: &DVec3, rng: &mut ThreadRng) -> Ray {
+        Ray {
+            origin: *pt,
+            direction: self
+                .material
+                .get_new_dir(incident_dir, &self.normal(pt), rng),
+        }
     }
 }
